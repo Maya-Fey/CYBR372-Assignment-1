@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.logging.Logger;
 
@@ -93,6 +94,8 @@ public class FileEncryptor {
     
     private static final void enc(InputParams params)
     {
+    	//For IV generation
+    	SecureRandom rand = new SecureRandom();
     	//TODO: Implement
     }
     
@@ -133,7 +136,7 @@ public class FileEncryptor {
     		char[] pass = args[start];
     		String inFile = new String(args[start + 1]);
     		String outFile = new String(args[start + 2]);
-    		return new InputParams(type, algo, cipher, pass, inFile, outFile);
+    		return new InputParams(type, algo, cipher, 16, 16, pass, inFile, outFile);
     	}
     }
     
@@ -152,11 +155,13 @@ public class FileEncryptor {
     	
     	private final String algorithm, cipher;
     	
+    	private final int blocksize, keysize;
+    	
     	private final char[] key;
     	
     	private final String inputFile, outputFile;
     	
-    	public InputParams(CommandType encDec, String algorithm, String cipher, char[] key, String inputFile, String outputFile)
+    	public InputParams(CommandType encDec, String algorithm, String cipher, int blocksize, int keysize, char[] key, String inputFile, String outputFile)
     	{
     		this.type = encDec;
     		this.algorithm = algorithm;
@@ -171,6 +176,7 @@ public class FileEncryptor {
     		this.type = info;
     		this.inputFile = inputFile;
     		this.cipher = this.outputFile = this.algorithm = null;
+    		this.blocksize = this.keysize = -1;
     		this.key = null;
     	}
 
@@ -197,6 +203,24 @@ public class FileEncryptor {
 			if(type == CommandType.INFO)
 				throw new IllegalStateException("Attempted to call getCipher on an INFO command");
 			return cipher;
+		}
+
+		/**
+		 * @return the blocksize
+		 */
+		public int getBlocksize() {
+			if(type == CommandType.INFO)
+				throw new IllegalStateException("Attempted to call getBlocksize on an INFO command");
+			return blocksize;
+		}
+
+		/**
+		 * @return the keysize
+		 */
+		public int getKeysize() {
+			if(type == CommandType.INFO)
+				throw new IllegalStateException("Attempted to call getKeysize on an INFO command");
+			return keysize;
 		}
 
 		/**
