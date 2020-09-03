@@ -23,6 +23,7 @@ import javax.crypto.spec.SecretKeySpec;
  * @author Erik Costlow
  */
 public class FileEncryptor {
+	
     private static final Logger LOG = Logger.getLogger(FileEncryptor.class.getSimpleName());
 
     private static final String ALGORITHM = "AES";
@@ -75,6 +76,40 @@ public class FileEncryptor {
         }
         
         LOG.info("Decryption complete, open " + decryptedPath);
+    }
+    
+    private static enum CommandType {
+    	ENC, DEC, INFO
+    }
+    
+    private static final class InputParams {
+    	
+    	private final CommandType type;
+    	
+    	private final String algorithm, cipher;
+    	
+    	private final char[] key;
+    	
+    	private final String inputFile, outputFile;
+    	
+    	public InputParams(CommandType encDec, String algorithm, String cipher, char[] key, String inputFile, String outputFile)
+    	{
+    		this.type = encDec;
+    		this.algorithm = algorithm;
+    		this.cipher = cipher;
+    		this.key = key;
+    		this.inputFile = inputFile;
+    		this.outputFile = outputFile;
+    	}
+    	
+    	public InputParams(CommandType info, String inputFile)
+    	{
+    		this.type = info;
+    		this.inputFile = inputFile;
+    		this.cipher = this.outputFile = this.algorithm = null;
+    		this.key = null;
+    	}
+    	
     }
     
     private static final class Util {
@@ -133,4 +168,5 @@ public class FileEncryptor {
     	}
     	
     }
+
 }
