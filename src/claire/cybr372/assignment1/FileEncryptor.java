@@ -9,6 +9,7 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.Cipher;
@@ -76,6 +77,34 @@ public class FileEncryptor {
         }
         
         LOG.info("Decryption complete, open " + decryptedPath);
+    }
+    
+    private static final InputParams fromStrs(char[][] args) 
+    {
+    	CommandType type;
+    	if(Arrays.equals("enc".toCharArray(), args[0]))
+    		type = CommandType.ENC;
+    	else if(Arrays.equals("dec".toCharArray(), args[0]))
+    		type = CommandType.DEC;
+    	else if(Arrays.equals("info".toCharArray(), args[0]))
+    		type = CommandType.INFO;
+    	else
+    		throw new IllegalArgumentException("Was expecting `enc`, `dec`, or `info` as argument zero.");
+    	
+    	if(type == CommandType.INFO) {
+    		return new InputParams(CommandType.INFO, new String(args[1]));
+    	} else {
+    		int start = 1;
+    		String algo = ALGORITHM;
+    		String cipher = CIPHER;
+    		if(type == CommandType.ENC && args.length == 5) {
+    			start = 2;
+    		}
+    		char[] pass = args[start];
+    		String inFile = new String(args[start + 1]);
+    		String outFile = new String(args[start + 2]);
+    		return new InputParams(type, algo, cipher, pass, inFile, outFile);
+    	}
     }
     
     private static enum CommandType {
