@@ -1,5 +1,8 @@
 package claire.cybr372.assignment1;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -9,10 +12,14 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.logging.Logger;
 
+import javax.crypto.Cipher;
+import javax.crypto.CipherOutputStream;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  *
@@ -98,14 +105,97 @@ public class FileEncryptor {
     
     private static final void enc(InputParams params)
     {
-    	//For IV generation
-    	SecureRandom rand = new SecureRandom();
-    	byte[] IV = new byte[params.getBlocksize()];
-    	byte[] key = new byte[params.getKeysize()];
-    	
-    	//Generate IV
-    	rand.nextBytes(IV);
-    	
+    	try {
+    		File inFile = new File(params.getInputFile());
+    		File outFile = new File(params.getOutputFile());
+    		
+    		//Ensure that the input file actually exists
+    		if(!inFile.exists() || !inFile.isFile()) {
+    			System.out.println("File " + inFile.toString() + " doesn't exist.");
+    			System.exit(0);
+    		}
+    		
+    		//If the output file exists, check with the user before overwriting
+    		if(outFile.exists()) {
+    			System.out.println("File " + outFile + " already exists. Do you want to overwrite? (Y/N): ");
+    			try {
+					char c = (char) System.in.read();
+					if(c != 'Y' && c != 'y')
+						System.exit(0);
+				} catch (IOException e) {
+					System.exit(0);
+				}
+    		}
+    		
+    		outFile.createNewFile();
+    		
+    		//For IV generation
+        	SecureRandom rand = new SecureRandom();
+        	byte[] IV = new byte[params.getBlocksize()];
+        	byte[] pepper = new byte[8];
+        	byte[] key;
+        	
+        	//Generate IV, pepper, and the key from password
+        	rand.nextBytes(IV);
+        	rand.nextBytes(pepper);
+			key = CryptUtil.keyFromPassword(params.getKeysize(), pepper, params.getKey());
+			
+			//Generate the specifications from the raw bytes
+			IvParameterSpec IVSpec = new IvParameterSpec(IV);
+	        SecretKeySpec keySpec = new SecretKeySpec(key, params.getAlgorithm());
+	        Cipher cipher = Cipher.getInstance(params.getCipher());
+	        
+	        //Initialize the cipher
+	        cipher.init(Cipher.ENCRYPT_MODE, keySpec, IVSpec);
+	        
+	        try(FileInputStream fis = new FileInputStream(inFile)) {
+	        	try(FileOutputStream fos = new FileOutputStream(outFile)) {
+	        		/*
+	        		 * File format:
+	        		 * Block size, key size
+	        		 * <length of algorithm> algorithm
+	        		 * <length of cipher> cipher
+	        		 * pepper
+	        		 * IV
+	        		 */
+	        		fos.write((byte) params.blocksize);
+	        		fos.write((byte) params.keysize);
+	        		fos.write((byte) params.algorithm.length());
+	        		fos.write(params.algorithm.getBytes());
+	        		fos.write((byte) params.cipher.length());
+	        		fos.write(params.cipher.getBytes());
+	        		fos.write(pepper);
+	        		fos.write(IV);
+		        	try(CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
+		                final byte[] buffer = new byte[1024];
+		                for(int length=fis.read(buffer); length!=-1; length = fis.read(buffer)){
+		                    cos.write(buffer, 0, length);
+		                }
+		        	}
+	        	}
+	        }
+	        
+	        System.out.println("File successfully encrypted.");
+    	} catch (NoSuchAlgorithmException e) {
+    		System.out.println("The selected cipher (" + params.getAlgorithm() + "/" + params.getCipher() + ") is not available on this system. Consider upgrading your JRE.");
+			System.exit(0);
+		} catch (InvalidKeySpecException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (NoSuchPaddingException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (InvalidKeyException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (InvalidAlgorithmParameterException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (IOException e) {
+			System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
+			System.out.println("Error: " + e.getMessage());
+			System.exit(0);
+		}
     	
     	
     	//TODO: Implement
@@ -355,13 +445,17 @@ public class FileEncryptor {
 
     private static final class CryptUtil {
     	
+    	//For a command line file encryption utility, fast access isn't important. High iteration count will add an extra layer of security
     	public static final int ITERATION_COUNT = 1000 * 128;
     	public static final byte[] SALT = Util.fromHex("8fad0183aa844319b69b8a15470e7ace".toCharArray());
     	
-    	public static final byte[] keyFromPassword(int keyBytes, char[] password) throws NoSuchAlgorithmException, InvalidKeySpecException
+    	public static final byte[] keyFromPassword(int keyBytes, byte[] pepper, char[] password) throws NoSuchAlgorithmException, InvalidKeySpecException
     	{
+    		byte[] combined = new byte[SALT.length + pepper.length];
+    		System.arraycopy(SALT, 0, combined, 0, SALT.length);
+    		System.arraycopy(pepper, 0, combined, SALT.length, pepper.length);
     		SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-    		PBEKeySpec spec = new PBEKeySpec(password, SALT, ITERATION_COUNT, keyBytes * 8);
+    		PBEKeySpec spec = new PBEKeySpec(password, combined, ITERATION_COUNT, keyBytes * 8);
     		SecretKey key = factory.generateSecret(spec);
     		return key.getEncoded();
     	}
