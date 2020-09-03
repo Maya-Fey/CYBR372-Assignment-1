@@ -134,16 +134,16 @@ public class FileEncryptor {
 			}
 			String cipher = new String(bytes);
 			
-			byte[] pepper = new byte[8];
+			byte[] salt = new byte[8];
 			byte[] IV = new byte[blocksize];
 			
-			fis.read(pepper);
+			fis.read(salt);
 			fis.read(IV);
 			
 			System.out.println("Encrypted File Detected: ");
 			System.out.println("Encryption type: " + algorithm + " | " + cipher);
 			System.out.println("Key Size: " + keysize);
-			System.out.println("Salt: " + Base64.getEncoder().encodeToString(pepper));
+			System.out.println("Salt: " + Base64.getEncoder().encodeToString(salt));
 			System.out.println("IV: " + Base64.getEncoder().encodeToString(IV));
 		} catch (IOException e) {
 			System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
@@ -182,13 +182,13 @@ public class FileEncryptor {
     		//For IV generation
         	SecureRandom rand = new SecureRandom();
         	byte[] IV = new byte[params.getBlocksize()];
-        	byte[] pepper = new byte[8];
+        	byte[] salt = new byte[8];
         	byte[] key;
         	
         	//Generate IV, pepper, and the key from password
         	rand.nextBytes(IV);
-        	rand.nextBytes(pepper);
-			key = CryptUtil.keyFromPassword(params.getKeysize(), pepper, params.getKey());
+        	rand.nextBytes(salt);
+			key = CryptUtil.keyFromPassword(params.getKeysize(), salt, params.getKey());
 			
 			//Generate the specifications from the raw bytes
 			IvParameterSpec IVSpec = new IvParameterSpec(IV);
@@ -206,7 +206,7 @@ public class FileEncryptor {
 	        		 * Block size, key size
 	        		 * <length of algorithm> algorithm
 	        		 * <length of cipher> cipher
-	        		 * pepper
+	        		 * salt
 	        		 * IV
 	        		 */
 	        		fos.write((byte) params.blocksize);
@@ -215,7 +215,7 @@ public class FileEncryptor {
 	        		fos.write(params.algorithm.getBytes());
 	        		fos.write((byte) params.cipher.length());
 	        		fos.write(params.cipher.getBytes());
-	        		fos.write(pepper);
+	        		fos.write(salt);
 	        		fos.write(IV);
 		        	try(CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
 		                final byte[] buffer = new byte[1024];
@@ -498,13 +498,13 @@ public class FileEncryptor {
     	
     	//For a command line file encryption utility, fast access isn't important. High iteration count will add an extra layer of security
     	public static final int ITERATION_COUNT = 1000 * 128;
-    	public static final byte[] SALT = Util.fromHex("8fad0183aa844319b69b8a15470e7ace".toCharArray());
+    	public static final byte[] PEPPER = Util.fromHex("8fad0183aa844319b69b8a15470e7ace".toCharArray());
     	
-    	public static final byte[] keyFromPassword(int keyBytes, byte[] pepper, char[] password) throws NoSuchAlgorithmException, InvalidKeySpecException
+    	public static final byte[] keyFromPassword(int keyBytes, byte[] salt, char[] password) throws NoSuchAlgorithmException, InvalidKeySpecException
     	{
-    		byte[] combined = new byte[SALT.length + pepper.length];
-    		System.arraycopy(SALT, 0, combined, 0, SALT.length);
-    		System.arraycopy(pepper, 0, combined, SALT.length, pepper.length);
+    		byte[] combined = new byte[PEPPER.length + salt.length];
+    		System.arraycopy(PEPPER, 0, combined, 0, PEPPER.length);
+    		System.arraycopy(salt, 0, combined, PEPPER.length, salt.length);
     		SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
     		PBEKeySpec spec = new PBEKeySpec(password, combined, ITERATION_COUNT, keyBytes * 8);
     		SecretKey key = factory.generateSecret(spec);
