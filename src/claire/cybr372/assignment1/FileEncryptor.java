@@ -138,6 +138,56 @@ public class FileEncryptor {
     		this.cipher = this.outputFile = this.algorithm = null;
     		this.key = null;
     	}
+
+		/**
+		 * @return the type
+		 */
+		public CommandType getType() {
+			return type;
+		}
+
+		/**
+		 * @return the algorithm
+		 */
+		public String getAlgorithm() {
+			if(type == CommandType.INFO)
+				throw new IllegalStateException("Attempted to call getAlgorithm on an INFO command");
+			return algorithm;
+		}
+
+		/**
+		 * @return the cipher
+		 */
+		public String getCipher() {
+			if(type == CommandType.INFO)
+				throw new IllegalStateException("Attempted to call getCipher on an INFO command");
+			return cipher;
+		}
+
+		/**
+		 * @return the key
+		 */
+		public char[] getKey() {
+			if(type == CommandType.INFO)
+				throw new IllegalStateException("Attempted to call getKey on an INFO command");
+			return key;
+		}
+
+		/**
+		 * @return the inputFile
+		 */
+		public String getInputFile() {
+			return inputFile;
+		}
+
+		/**
+		 * @return the outputFile
+		 */
+		public String getOutputFile() {
+			if(type == CommandType.INFO)
+				throw new IllegalStateException("Attempted to call getOutputFile on an INFO command");
+			return outputFile;
+		}
     	
     }
     
