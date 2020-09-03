@@ -209,6 +209,7 @@ public class FileEncryptor {
 	        		 * salt
 	        		 * IV
 	        		 */
+	        		fos.write(0x09);
 	        		fos.write((byte) params.blocksize);
 	        		fos.write((byte) params.keysize);
 	        		fos.write((byte) params.algorithm.length());
