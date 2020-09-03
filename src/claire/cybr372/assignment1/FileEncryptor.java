@@ -88,6 +88,7 @@ public class FileEncryptor {
      */
     private static final InputParams fromStrs(char[][] args) 
     {
+    	Util.inPlaceToLowerCase(args[0]);
     	CommandType type;
     	if(Arrays.equals("enc".toCharArray(), args[0]))
     		type = CommandType.ENC;
@@ -264,6 +265,22 @@ public class FileEncryptor {
     			nBytes[i] = b;
     		}
     		return nBytes;
+    	}
+    	
+    	/**
+    	 * Performs in place conversion from upper to lower case
+    	 * 
+    	 * @param in The array to convert
+    	 */
+    	public static final void inPlaceToLowerCase(char[] in)
+    	{
+    		for(int i = 0; i < in.length; i++)
+    		{
+    			char c = in[i];
+    			if(c >= 'A' && c <= 'Z')
+    				c = (char) (c + ('a' - 'A'));
+    			in[i] = c;
+    		}
     	}
     	
     }
