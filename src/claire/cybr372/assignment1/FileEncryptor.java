@@ -5,10 +5,14 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.logging.Logger;
 
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 
 /**
  *
@@ -96,6 +100,14 @@ public class FileEncryptor {
     {
     	//For IV generation
     	SecureRandom rand = new SecureRandom();
+    	byte[] IV = new byte[params.getBlocksize()];
+    	byte[] key = new byte[params.getKeysize()];
+    	
+    	//Generate IV
+    	rand.nextBytes(IV);
+    	
+    	
+    	
     	//TODO: Implement
     }
     
@@ -341,4 +353,18 @@ public class FileEncryptor {
     	
     }
 
+    private static final class CryptUtil {
+    	
+    	public static final int ITERATION_COUNT = 1000 * 128;
+    	public static final byte[] SALT = Util.fromHex("8fad0183aa844319b69b8a15470e7ace".toCharArray());
+    	
+    	public static final byte[] keyFromPassword(int keyBytes, char[] password) throws NoSuchAlgorithmException, InvalidKeySpecException
+    	{
+    		SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+    		PBEKeySpec spec = new PBEKeySpec(password, SALT, ITERATION_COUNT, keyBytes * 8);
+    		SecretKey key = factory.generateSecret(spec);
+    		return key.getEncoded();
+    	}
+    	
+    }
 }
