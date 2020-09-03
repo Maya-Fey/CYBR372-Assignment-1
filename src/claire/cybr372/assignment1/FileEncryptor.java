@@ -166,6 +166,8 @@ public class FileEncryptor {
     		this.type = encDec;
     		this.algorithm = algorithm;
     		this.cipher = cipher;
+    		this.blocksize = blocksize;
+    		this.keysize = keysize;
     		this.key = key;
     		this.inputFile = inputFile;
     		this.outputFile = outputFile;
