@@ -10,6 +10,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.logging.Logger;
 
 import javax.crypto.Cipher;
@@ -100,7 +101,56 @@ public class FileEncryptor {
     
     private static final void info(InputParams params)
     {
-    	//TODO: Implement
+		File inFile = new File(params.getInputFile());
+		
+		//Ensure that the input file actually exists
+		if(!inFile.exists() || !inFile.isFile()) {
+			System.out.println("File " + inFile.toString() + " doesn't exist.");
+			System.exit(0);
+		}
+		
+		try(FileInputStream fis = new FileInputStream(inFile))
+		{
+			if(fis.read() != 0x09) {
+				System.out.println("Not a valid encrypted file");
+				System.exit(0);
+			}
+			int blocksize = fis.read();
+			int keysize = fis.read();
+			
+			int algorithmLen = fis.read();
+			byte[] bytes = new byte[algorithmLen];
+			if(algorithmLen != (fis.read(bytes))) {
+				System.out.println("Not a valid encrypted file");
+				System.exit(0);
+			}
+			String algorithm = new String(bytes);
+			
+			int cipherLen = fis.read();
+			bytes = new byte[cipherLen];
+			if(cipherLen != (fis.read(bytes))) {
+				System.out.println("Not a valid encrypted file");
+				System.exit(0);
+			}
+			String cipher = new String(bytes);
+			
+			byte[] pepper = new byte[8];
+			byte[] IV = new byte[blocksize];
+			
+			fis.read(pepper);
+			fis.read(IV);
+			
+			System.out.println("Encrypted File Detected: ");
+			System.out.println("Encryption type: " + algorithm + " | " + cipher);
+			System.out.println("Key Size: " + keysize);
+			System.out.println("Salt: " + Base64.getEncoder().encodeToString(pepper));
+			System.out.println("IV: " + Base64.getEncoder().encodeToString(IV));
+		} catch (IOException e) {
+			System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
+			System.out.println("...or perhaps the file format is not valid?");
+			System.out.println("Error: " + e.getMessage());
+			System.exit(0);
+		}
     }
     
     private static final void enc(InputParams params)
@@ -152,6 +202,7 @@ public class FileEncryptor {
 	        	try(FileOutputStream fos = new FileOutputStream(outFile)) {
 	        		/*
 	        		 * File format:
+	        		 * 0x09
 	        		 * Block size, key size
 	        		 * <length of algorithm> algorithm
 	        		 * <length of cipher> cipher
