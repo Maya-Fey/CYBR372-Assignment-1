@@ -79,6 +79,13 @@ public class FileEncryptor {
         LOG.info("Decryption complete, open " + decryptedPath);
     }
     
+    /**
+     * Parses input parameters from main(). Ensures that they are textually valid, but performs no external validation
+     * (ie, doesn't confirm that the given input file actually exists)
+     * 
+     * @param args The arguments as a char[]
+     * @return An <code>InputParams</code> object
+     */
     private static final InputParams fromStrs(char[][] args) 
     {
     	CommandType type;
@@ -111,6 +118,11 @@ public class FileEncryptor {
     	ENC, DEC, INFO
     }
     
+    /**
+     * Input parameters for FileEncryptor
+     * 
+     * @author Claire
+     */
     private static final class InputParams {
     	
     	private final CommandType type;
@@ -191,6 +203,14 @@ public class FileEncryptor {
     	
     }
     
+    /**
+     * Utility for dealing with bytes and chars
+     * 
+     * If you run this through a plagiarism detector you may find a hit in a repository called HRTWiki. 
+     * This is my repository and my code, I am re-using it for this assignment.
+     * 
+     * @author Claire
+     */
     private static final class Util {
     	
     	private static final char[] HEX = new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
