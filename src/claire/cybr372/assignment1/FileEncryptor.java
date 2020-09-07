@@ -429,12 +429,77 @@ public class FileEncryptor {
     		int start = 1;
     		CryptParams params = new CryptParams(DEFAULT_ALGORITHM, DEFAULT_CIPHER, 16, 16);
     		if(type == CommandType.ENC && args.length == 5) {
+    			params = getCryptParams(new String(args[start]));
     			start = 2;
     		}
     		char[] pass = args[start];
     		String inFile = new String(args[start + 1]);
     		String outFile = new String(args[start + 2]);
     		return new InputParams(type, params, pass, inFile, outFile);
+    	}
+    }
+    
+    private static final CryptParams getCryptParams(String cryptstr)
+    {
+    	boolean useDefaultLength;
+    	int length = -1;
+    	String cipher;
+    	
+    	cryptstr = cryptstr.toLowerCase();
+    	
+    	if(cryptstr.contains("-")) {
+    		String[] split = cryptstr.split("-");
+    		if(split.length != 2) {
+    			System.out.println("Fatal: Cryptographic Algorithm specifier must be of the format ALGORITHM(-LENGTH)");
+    			System.out.println("Valid examples: 'AES', 'AES-192', 'Blowfish-448");
+    			System.exit(0);
+    		}
+    		cipher = split[0];
+    		try {
+    			length = Integer.valueOf(split[1]);
+    		} catch(NumberFormatException e) {
+    			System.out.println("Fatal: Invalid length specifier, must be an integer");
+    			System.out.println("Valid examples: 'AES-192', 'Blowfish-448");
+    			System.exit(0);
+    		}
+    		if((length % 8) != 0) {
+    			System.out.println("Fatal: Invalid length specifier, must be an integer multiple of 8");
+    			System.out.println("Valid examples: 'AES-192', 'Blowfish-448");
+    			System.exit(0);
+    		}
+    		length /= 8;
+    		useDefaultLength = false;
+    	} else {
+    		cipher = cryptstr;
+    		useDefaultLength = true;
+    	}
+    	
+    	switch(cipher)
+    	{
+    		case "aes":
+    			if(useDefaultLength) {
+    				return new CryptParams("AES", "AES/CBC/PKCS5PADDING", 16, 16);
+    			} else {
+    				if(length != 16 && length != 24 && length != 32) {
+    					System.out.println("Fatal: Invalid key length specifier for AES, must be one of [128, 192, 256]");
+    	    			System.exit(0);
+    				}
+    				return new CryptParams("AES", "AES/CBC/PKCS5PADDING", 16, length);
+    			}
+    		case "blowfish":
+    			if(useDefaultLength) {
+    				return new CryptParams("Blowfish", "Blowfish/CBC/PKCS5PADDING", 8, 16);
+    			} else {
+    				if(length < 4 || length > 56) {
+    					System.out.println("Fatal: Invalid key length specifier for Blowfish, must be in the range 32-448");
+    	    			System.exit(0);
+    				}
+    				return new CryptParams("Blowfish", "Blowfish/CBC/PKCS5PADDING", 8, length);
+    			}
+    		default:
+    			System.out.println("No such cipher.");
+    			System.exit(0);
+    			return null;
     	}
     }
     
