@@ -12,9 +12,11 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.Base64;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
+import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -89,15 +91,18 @@ public class FileEncryptor {
 			
 			byte[] salt = new byte[8];
 			byte[] IV = new byte[blocksize];
+			byte[] mac = new byte[32];
 			
 			fis.read(salt);
 			fis.read(IV);
+			fis.read(mac);
 			
 			System.out.println("Encrypted File Detected: ");
 			System.out.println("Encryption type: " + algorithm + " | " + cipher);
 			System.out.println("Key Size: " + (keysize * 8));
 			System.out.println("Salt: " + Base64.getEncoder().encodeToString(salt));
 			System.out.println("IV: " + Base64.getEncoder().encodeToString(IV));
+			System.out.println("MAC: " + Base64.getEncoder().encodeToString(mac));
 		} catch (IOException e) {
 			System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
 			System.out.println("...or perhaps the file format is not valid?");
@@ -137,6 +142,7 @@ public class FileEncryptor {
         	byte[] IV = new byte[params.getCryptParams().getBlocksize()];
         	byte[] salt = new byte[16];
         	byte[] key;
+        	byte[] macKey = new byte[32];
         	
         	//Generate IV, pepper, and the key from password
         	rand.nextBytes(IV);
@@ -151,6 +157,20 @@ public class FileEncryptor {
 	        //Initialize the cipher
 	        cipher.init(Cipher.ENCRYPT_MODE, keySpec, IVSpec);
 	        
+	        SecretKeySpec macKeySpec = new SecretKeySpec(macKey, "HmacSHA256");
+	        Mac mac = Mac.getInstance("HmacSHA256");
+	        
+	        mac.init(macKeySpec);
+	        
+	        try(FileInputStream fis = new FileInputStream(inFile)) {
+	        	final byte[] buffer = new byte[1024];
+                for(int length = fis.read(buffer); length != -1; length = fis.read(buffer)){
+                    mac.update(buffer, 0, length);
+                }
+	        }
+	        
+	        byte[] computedMAC = mac.doFinal();
+	        
 	        try(FileInputStream fis = new FileInputStream(inFile)) {
 	        	try(FileOutputStream fos = new FileOutputStream(outFile)) {
 	        		/*
@@ -161,6 +181,7 @@ public class FileEncryptor {
 	        		 * <length of cipher> cipher
 	        		 * salt
 	        		 * IV
+	        		 * MAC
 	        		 */
 	        		fos.write(0x09);
 	        		fos.write((byte) params.getCryptParams().getBlocksize());
@@ -171,9 +192,10 @@ public class FileEncryptor {
 	        		fos.write(params.getCryptParams().getCipher().getBytes());
 	        		fos.write(salt);
 	        		fos.write(IV);
+	        		fos.write(computedMAC);
 		        	try(CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
 		                final byte[] buffer = new byte[1024];
-		                for(int length=fis.read(buffer); length!=-1; length = fis.read(buffer)){
+		                for(int length = fis.read(buffer); length != -1; length = fis.read(buffer)){
 		                    cos.write(buffer, 0, length);
 		                }
 		        	}
@@ -252,10 +274,13 @@ public class FileEncryptor {
 			
 			byte[] salt = new byte[16];
 			byte[] IV = new byte[blocksize];
+			byte[] givenMAC = new byte[32];
 			
 			fis.read(salt);
 			fis.read(IV);
+			fis.read(givenMAC);
 			byte[] key = CryptUtil.keyFromPassword(keysize, salt, params.getKey());
+			byte[] macKey = new byte[32];
 			
 			//Generate the specifications from the raw bytes
 			IvParameterSpec IVSpec = new IvParameterSpec(IV);
@@ -265,6 +290,11 @@ public class FileEncryptor {
 	        //Initialize the cipher
 	        cipher.init(Cipher.DECRYPT_MODE, keySpec, IVSpec);
 	        
+	        SecretKeySpec macKeySpec = new SecretKeySpec(macKey, "HmacSHA256");
+	        Mac mac = Mac.getInstance("HmacSHA256");
+	        
+	        mac.init(macKeySpec);
+	        
 	        //New File
 	        outFile.createNewFile();
 			
@@ -273,15 +303,28 @@ public class FileEncryptor {
 	        		final byte[] buffer = new byte[1024];
 	                for(int length = cis.read(buffer); length != -1; length = cis.read(buffer)){
 	                    fos.write(buffer, 0, length);
+	                    mac.update(buffer, 0, length);
 	                }
 	        	}
 	        }
 	        
+	        byte[] computedMAC = mac.doFinal();
+	        
+	        if(!Arrays.equals(givenMAC, computedMAC)) {
+	        	System.out.println("Decrypted file didn't pass verification. Either your password was incorrect, or the file has been corrupted.");
+	        	outFile.delete();
+	        }
+	        
 	        System.out.println("Successfully decrypted file.");
 		} catch (IOException e) {
-			System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
-			System.out.println("...or perhaps the file format is not valid?");
-			System.out.println("Error: " + e.getMessage());
+			if(e.getCause() != null && e.getCause() instanceof BadPaddingException) {
+				System.out.println("Decrypted file didn't pass verification. Either your password was incorrect, or the file has been corrupted.");
+	        	outFile.delete();
+			} else {
+				System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
+				System.out.println("...or perhaps the file format is not valid?");
+				System.out.println("Error: " + e.getMessage());
+			}
 			System.exit(0);
 		} catch (NoSuchAlgorithmException e) {
 			System.out.println("The cipher to decrypt the file is not available on this system. Consider upgrading your JRE.");
