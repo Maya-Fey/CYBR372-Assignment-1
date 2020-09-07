@@ -89,18 +89,21 @@ public class FileEncryptor {
 			}
 			String cipher = new String(bytes);
 			
-			byte[] salt = new byte[8];
+			byte[] encSalt = new byte[16];
+			byte[] macSalt = new byte[16];
 			byte[] IV = new byte[blocksize];
 			byte[] mac = new byte[32];
 			
-			fis.read(salt);
+			fis.read(encSalt);
+			fis.read(macSalt);
 			fis.read(IV);
 			fis.read(mac);
 			
 			System.out.println("Encrypted File Detected: ");
 			System.out.println("Encryption type: " + algorithm + " | " + cipher);
 			System.out.println("Key Size: " + (keysize * 8));
-			System.out.println("Salt: " + Base64.getEncoder().encodeToString(salt));
+			System.out.println("Cipher Salt: " + Base64.getEncoder().encodeToString(encSalt));
+			System.out.println("MAC Salt: " + Base64.getEncoder().encodeToString(macSalt));
 			System.out.println("IV: " + Base64.getEncoder().encodeToString(IV));
 			System.out.println("MAC: " + Base64.getEncoder().encodeToString(mac));
 		} catch (IOException e) {
@@ -140,14 +143,17 @@ public class FileEncryptor {
     		//For IV generation
         	SecureRandom rand = new SecureRandom();
         	byte[] IV = new byte[params.getCryptParams().getBlocksize()];
-        	byte[] salt = new byte[16];
+        	byte[] encSalt = new byte[16];
+        	byte[] macSalt = new byte[16];
         	byte[] key;
-        	byte[] macKey = new byte[32];
+        	byte[] macKey;
         	
         	//Generate IV, pepper, and the key from password
         	rand.nextBytes(IV);
-        	rand.nextBytes(salt);
-			key = CryptUtil.keyFromPassword(params.getCryptParams().getKeysize(), salt, params.getKey());
+        	rand.nextBytes(encSalt);
+        	rand.nextBytes(macSalt);
+			key = CryptUtil.keyFromPassword(params.getCryptParams().getKeysize(), encSalt, params.getKey());
+			macKey = CryptUtil.keyFromPassword(32, macSalt, params.getKey());
 			
 			//Generate the specifications from the raw bytes
 			IvParameterSpec IVSpec = new IvParameterSpec(IV);
@@ -190,7 +196,8 @@ public class FileEncryptor {
 	        		fos.write(params.getCryptParams().getAlgorithm().getBytes());
 	        		fos.write((byte) params.getCryptParams().getCipher().length());
 	        		fos.write(params.getCryptParams().getCipher().getBytes());
-	        		fos.write(salt);
+	        		fos.write(encSalt);
+	        		fos.write(macSalt);
 	        		fos.write(IV);
 	        		fos.write(computedMAC);
 		        	try(CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
@@ -272,15 +279,17 @@ public class FileEncryptor {
 			}
 			String ciphername = new String(bytes);
 			
-			byte[] salt = new byte[16];
+			byte[] encSalt = new byte[16];
+			byte[] macSalt = new byte[16];
 			byte[] IV = new byte[blocksize];
 			byte[] givenMAC = new byte[32];
 			
-			fis.read(salt);
+			fis.read(encSalt);
+			fis.read(macSalt);
 			fis.read(IV);
 			fis.read(givenMAC);
-			byte[] key = CryptUtil.keyFromPassword(keysize, salt, params.getKey());
-			byte[] macKey = new byte[32];
+			byte[] key = CryptUtil.keyFromPassword(keysize, encSalt, params.getKey());
+			byte[] macKey = CryptUtil.keyFromPassword(32, macSalt, params.getKey());
 			
 			//Generate the specifications from the raw bytes
 			IvParameterSpec IVSpec = new IvParameterSpec(IV);
@@ -313,6 +322,7 @@ public class FileEncryptor {
 	        if(!Arrays.equals(givenMAC, computedMAC)) {
 	        	System.out.println("Decrypted file didn't pass verification. Either your password was incorrect, or the file has been corrupted.");
 	        	outFile.delete();
+	        	System.exit(0);
 	        }
 	        
 	        System.out.println("Successfully decrypted file.");
