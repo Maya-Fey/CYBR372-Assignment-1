@@ -11,9 +11,9 @@ import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.logging.Logger;
 
 import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
@@ -28,65 +28,18 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public class FileEncryptor {
 	
-    private static final Logger LOG = Logger.getLogger(FileEncryptor.class.getSimpleName());
-
     private static final String ALGORITHM = "AES";
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
 
     public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException {
         //Hopefully args will GC
     	mainInner(Util.toCharArrayArray(args));
-//        //This snippet is literally copied from SymmetrixExample
-//        SecureRandom sr = new SecureRandom();
-//        byte[] key = new byte[16];
-//        sr.nextBytes(key); // 128 bit key
-//        byte[] initVector = new byte[16];
-//        sr.nextBytes(initVector); // 16 bytes IV
-//        System.out.println("Random key=" + new String(Util.toHex(key)));
-//        System.out.println("initVector=" + new String(Util.toHex(initVector)));
-//        IvParameterSpec iv = new IvParameterSpec(initVector);
-//        SecretKeySpec skeySpec = new SecretKeySpec(key, ALGORITHM);
-//        Cipher cipher = Cipher.getInstance(CIPHER);
-//        cipher.init(Cipher.ENCRYPT_MODE, skeySpec, iv);
-//
-//        //Look for files here
-//        final Path tempDir = Files.createTempDirectory("packt-crypto");
-//        
-//        final Path encryptedPath = tempDir.resolve("1 - Encrypting and Decrypting files.pptx.encrypted");
-//        try (InputStream fin = FileEncryptor.class.getResourceAsStream("1 - Encrypting and Decrypting files.pptx");
-//                OutputStream fout = Files.newOutputStream(encryptedPath);
-//                CipherOutputStream cipherOut = new CipherOutputStream(fout, cipher) {
-//        }) {
-//            final byte[] bytes = new byte[1024];
-//            for(int length=fin.read(bytes); length!=-1; length = fin.read(bytes)){
-//                cipherOut.write(bytes, 0, length);
-//            }
-//        } catch (IOException e) {
-//            LOG.log(Level.INFO, "Unable to encrypt", e);
-//        }
-//        
-//        LOG.info("Encryption finished, saved at " + encryptedPath);
-//        
-//        cipher.init(Cipher.DECRYPT_MODE, skeySpec, iv);
-//        final Path decryptedPath = tempDir.resolve("1 - Encrypting and Decrypting files_decrypted.pptx");
-//        try(InputStream encryptedData = Files.newInputStream(encryptedPath);
-//                CipherInputStream decryptStream = new CipherInputStream(encryptedData, cipher);
-//                OutputStream decryptedOut = Files.newOutputStream(decryptedPath)){
-//            final byte[] bytes = new byte[1024];
-//            for(int length=decryptStream.read(bytes); length!=-1; length = decryptStream.read(bytes)){
-//                decryptedOut.write(bytes, 0, length);
-//            }
-//        } catch (IOException ex) {
-//            Logger.getLogger(FileEncryptor.class.getName()).log(Level.SEVERE, "Unable to decrypt", ex);
-//        }
-//        
-//        LOG.info("Decryption complete, open " + decryptedPath);
     }
     
     private static final void mainInner(char[][] args)
     {
     	InputParams params = fromStrs(args);
-    	switch(params.type) {
+    	switch(params.getType()) {
     		case INFO:
     			info(params);
     			break;
@@ -248,14 +201,104 @@ public class FileEncryptor {
 			System.out.println("Error: " + e.getMessage());
 			System.exit(0);
 		}
-    	
-    	
-    	//TODO: Implement
     }
     
     private static final void dec(InputParams params)
     {
-    	//TODO: Implement
+    	File inFile = new File(params.getInputFile());
+    	File outFile = new File(params.getOutputFile());
+		
+		//Ensure that the input file actually exists
+		if(!inFile.exists() || !inFile.isFile()) {
+			System.out.println("File " + inFile.toString() + " doesn't exist.");
+			System.exit(0);
+		}
+		
+		if(outFile.exists()) {
+			System.out.println("File " + outFile + " already exists. Do you want to overwrite? (Y/N): ");
+			try {
+				char c = (char) System.in.read();
+				if(c != 'Y' && c != 'y')
+					System.exit(0);
+			} catch (IOException e) {
+				System.exit(0);
+			}
+		}
+		
+		try(FileInputStream fis = new FileInputStream(inFile))
+		{
+			if(fis.read() != 0x09) {
+				System.out.println("Not a valid encrypted file");
+				System.exit(0);
+			}
+			int blocksize = fis.read();
+			int keysize = fis.read();
+			
+			int algorithmLen = fis.read();
+			byte[] bytes = new byte[algorithmLen];
+			if(algorithmLen != (fis.read(bytes))) {
+				System.out.println("Not a valid encrypted file");
+				System.exit(0);
+			}
+			String algorithm = new String(bytes);
+			
+			int cipherLen = fis.read();
+			bytes = new byte[cipherLen];
+			if(cipherLen != (fis.read(bytes))) {
+				System.out.println("Not a valid encrypted file");
+				System.exit(0);
+			}
+			String ciphername = new String(bytes);
+			
+			byte[] salt = new byte[8];
+			byte[] IV = new byte[blocksize];
+			
+			fis.read(salt);
+			fis.read(IV);
+			byte[] key = CryptUtil.keyFromPassword(keysize, salt, params.getKey());
+			
+			//Generate the specifications from the raw bytes
+			IvParameterSpec IVSpec = new IvParameterSpec(IV);
+	        SecretKeySpec keySpec = new SecretKeySpec(key, algorithm);
+	        Cipher cipher = Cipher.getInstance(ciphername);
+	        
+	        //Initialize the cipher
+	        cipher.init(Cipher.DECRYPT_MODE, keySpec, IVSpec);
+	        
+	        //New File
+	        outFile.createNewFile();
+			
+	        try(CipherInputStream cis = new CipherInputStream(fis, cipher)) {
+	        	try(FileOutputStream fos = new FileOutputStream(outFile)) {
+	        		final byte[] buffer = new byte[1024];
+	                for(int length = cis.read(buffer); length != -1; length = cis.read(buffer)){
+	                    fos.write(buffer, 0, length);
+	                }
+	        	}
+	        }
+	        
+	        System.out.println("Successfully decrypted file.");
+		} catch (IOException e) {
+			System.out.println("File I/O Error encountered. Insufficient permissions/specified directory?");
+			System.out.println("...or perhaps the file format is not valid?");
+			System.out.println("Error: " + e.getMessage());
+			System.exit(0);
+		} catch (NoSuchAlgorithmException e) {
+			System.out.println("The selected cipher (" + params.getAlgorithm() + "/" + params.getCipher() + ") is not available on this system. Consider upgrading your JRE.");
+			System.exit(0);
+		} catch (NoSuchPaddingException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (InvalidKeySpecException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (InvalidKeyException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		} catch (InvalidAlgorithmParameterException e) {
+			System.out.println("Internal error in the application. Likely a programming bug.");
+			System.exit(0);
+		}
     }
     
     /**
@@ -349,6 +392,8 @@ public class FileEncryptor {
 		public String getAlgorithm() {
 			if(type == CommandType.INFO)
 				throw new IllegalStateException("Attempted to call getAlgorithm on an INFO command");
+			if(type == CommandType.DEC)
+				throw new IllegalStateException("Attempted to call getAlgorithm on an DEC command");
 			return algorithm;
 		}
 
@@ -358,6 +403,8 @@ public class FileEncryptor {
 		public String getCipher() {
 			if(type == CommandType.INFO)
 				throw new IllegalStateException("Attempted to call getCipher on an INFO command");
+			if(type == CommandType.DEC)
+				throw new IllegalStateException("Attempted to call getCipher on an DEC command");
 			return cipher;
 		}
 
@@ -367,6 +414,8 @@ public class FileEncryptor {
 		public int getBlocksize() {
 			if(type == CommandType.INFO)
 				throw new IllegalStateException("Attempted to call getBlocksize on an INFO command");
+			if(type == CommandType.DEC)
+				throw new IllegalStateException("Attempted to call getBlocksize on an DEC command");
 			return blocksize;
 		}
 
@@ -376,6 +425,8 @@ public class FileEncryptor {
 		public int getKeysize() {
 			if(type == CommandType.INFO)
 				throw new IllegalStateException("Attempted to call getKeysize on an INFO command");
+			if(type == CommandType.DEC)
+				throw new IllegalStateException("Attempted to call getKeysize on an DEC command");
 			return keysize;
 		}
 
