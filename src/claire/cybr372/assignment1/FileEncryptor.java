@@ -197,6 +197,7 @@ public class FileEncryptor {
 	       
 	        //Initialize the cipher
 	        cipher.init(Cipher.ENCRYPT_MODE, keySpec, IVSpec);
+	        Arrays.fill(key, (byte) 0); 
 	        
 	        //Generate MAC specifications from raw bytes
 	        SecretKeySpec macKeySpec = new SecretKeySpec(macKey, "HmacSHA256");
@@ -204,6 +205,7 @@ public class FileEncryptor {
 	        
 	        //Initialize
 	        mac.init(macKeySpec);
+	        Arrays.fill(macKey, (byte) 0); 
 	        
 	        //Read the entire file end feed it into the MAC
 	        try(FileInputStream fis = new FileInputStream(inFile)) {
@@ -341,6 +343,7 @@ public class FileEncryptor {
 	        
 	        //Initialize the cipher
 	        cipher.init(Cipher.DECRYPT_MODE, keySpec, IVSpec);
+	        Arrays.fill(key, (byte) 0); 
 	        
 	        //Generate the specifications from the raw bytes
 	        SecretKeySpec macKeySpec = new SecretKeySpec(macKey, "HmacSHA256");
@@ -348,6 +351,7 @@ public class FileEncryptor {
 	        
 	        //Initialize the MAC
 	        mac.init(macKeySpec);
+	        Arrays.fill(macKey, (byte) 0); 
 	        
 	        //If metadata reading was successful, overwrite the file and create a new zero-length one
 	        outFile.createNewFile();
