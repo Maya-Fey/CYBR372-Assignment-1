@@ -95,7 +95,7 @@ public class FileEncryptor {
 			
 			System.out.println("Encrypted File Detected: ");
 			System.out.println("Encryption type: " + algorithm + " | " + cipher);
-			System.out.println("Key Size: " + keysize);
+			System.out.println("Key Size: " + (keysize * 8));
 			System.out.println("Salt: " + Base64.getEncoder().encodeToString(salt));
 			System.out.println("IV: " + Base64.getEncoder().encodeToString(IV));
 		} catch (IOException e) {
