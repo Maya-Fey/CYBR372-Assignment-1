@@ -135,7 +135,7 @@ public class FileEncryptor {
     		//For IV generation
         	SecureRandom rand = new SecureRandom();
         	byte[] IV = new byte[params.getCryptParams().getBlocksize()];
-        	byte[] salt = new byte[8];
+        	byte[] salt = new byte[16];
         	byte[] key;
         	
         	//Generate IV, pepper, and the key from password
@@ -250,7 +250,7 @@ public class FileEncryptor {
 			}
 			String ciphername = new String(bytes);
 			
-			byte[] salt = new byte[8];
+			byte[] salt = new byte[16];
 			byte[] IV = new byte[blocksize];
 			
 			fis.read(salt);
