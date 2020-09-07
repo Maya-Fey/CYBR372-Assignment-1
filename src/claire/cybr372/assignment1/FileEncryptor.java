@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -34,8 +35,12 @@ public class FileEncryptor {
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
 
     public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException {
-        //Hopefully args will GC
-    	mainInner(Util.toCharArrayArray(args));
+        //Convert the arguments to char arrays, wipe the originals, and then enter into a new function (hopefully the args[] will GC, giving just an extra layer of protection)
+    	char[][] charargs = Util.toCharArrayArray(args);
+    	for(String s : args)
+    		CryptUtil.wipeString(s);
+    	args = null;
+    	mainInner(charargs);
     }
     
     private static final void mainInner(char[][] args)
@@ -53,6 +58,30 @@ public class FileEncryptor {
     			break;
     	}
     }
+    
+    /*
+	 * IMPORTANT NOTE REGARDING FILE FORMAT:
+	 * 
+	 * 0x09 (1 byte)
+	 * Block size (1 byte)
+	 * Key size (1 byte)
+	 * <length of algorithm string> (1 byte)
+	 * algorithm string (length bytes long)
+	 * <length of cipher string>
+	 * cipher (length bytes long)
+	 * salt for cipher key (16 bytes)
+	 * salt for MAC key (16 bytes)
+	 * IV (blocksize bytes long)
+	 * MAC of plaintext (32 bytes)
+	 * 
+	 * The rationale for this file format is as follows:
+	 * 
+	 *   - The 0x09 guard is just to make it so that more files are rejected early rather than causing IO errors or decrypt errors. Not foolproof, obviously, a random file has a 1/256 chance of having 0x9 on its own.
+	 *   - Block and key size are only one byte as they themselves are in bytes. A block size of 255 bytes would be over two thousand bits, which is not something we're likely to see.
+	 *   - Separate salts for cipher key and mac key as it's a convenient way to produce two different keys from the same master secret
+	 *   - MAC at the beginning so we can read it without dropping out of the cyrpto stream
+	 *   - MAC is of plaintext because mac-then-encrypt is about as secure as encrypt-than-mac, but the code complexity of mac-then-encrypt is much smaller, only requiring the file to be read once. (even though encrypt-than-mac is more efficient compute-wise) 
+	 */
     
     private static final void info(InputParams params)
     {
@@ -140,18 +169,24 @@ public class FileEncryptor {
     		
     		outFile.createNewFile();
     		
-    		//For IV generation
+    		//Rand for IV, Salt generation
         	SecureRandom rand = new SecureRandom();
+        	
+        	//All the variables we'll need to generate keys and initialize our primitives
         	byte[] IV = new byte[params.getCryptParams().getBlocksize()];
         	byte[] encSalt = new byte[16];
         	byte[] macSalt = new byte[16];
         	byte[] key;
         	byte[] macKey;
         	
-        	//Generate IV, pepper, and the key from password
+        	//Generate IV, salts
         	rand.nextBytes(IV);
         	rand.nextBytes(encSalt);
         	rand.nextBytes(macSalt);
+        	
+        	//Derive the keys for the cipher and the MAC using the two salts
+        	//Technically, I could have made one chonk key and split it in half
+        	//This is clearer and just as secure
 			key = CryptUtil.keyFromPassword(params.getCryptParams().getKeysize(), encSalt, params.getKey());
 			macKey = CryptUtil.keyFromPassword(32, macSalt, params.getKey());
 			
@@ -159,15 +194,18 @@ public class FileEncryptor {
 			IvParameterSpec IVSpec = new IvParameterSpec(IV);
 	        SecretKeySpec keySpec = new SecretKeySpec(key, params.getCryptParams().getAlgorithm());
 	        Cipher cipher = Cipher.getInstance(params.getCryptParams().getCipher());
-	        
+	       
 	        //Initialize the cipher
 	        cipher.init(Cipher.ENCRYPT_MODE, keySpec, IVSpec);
 	        
+	        //Generate MAC specifications from raw bytes
 	        SecretKeySpec macKeySpec = new SecretKeySpec(macKey, "HmacSHA256");
 	        Mac mac = Mac.getInstance("HmacSHA256");
 	        
+	        //Initialize
 	        mac.init(macKeySpec);
 	        
+	        //Read the entire file end feed it into the MAC
 	        try(FileInputStream fis = new FileInputStream(inFile)) {
 	        	final byte[] buffer = new byte[1024];
                 for(int length = fis.read(buffer); length != -1; length = fis.read(buffer)){
@@ -175,20 +213,13 @@ public class FileEncryptor {
                 }
 	        }
 	        
+	        //Store the MAC
 	        byte[] computedMAC = mac.doFinal();
 	        
 	        try(FileInputStream fis = new FileInputStream(inFile)) {
 	        	try(FileOutputStream fos = new FileOutputStream(outFile)) {
-	        		/*
-	        		 * File format:
-	        		 * 0x09
-	        		 * Block size, key size
-	        		 * <length of algorithm> algorithm
-	        		 * <length of cipher> cipher
-	        		 * salt
-	        		 * IV
-	        		 * MAC
-	        		 */
+	        		//Write the file metadata in plaintext
+	        		//No need to encrypt, it contains no secrets
 	        		fos.write(0x09);
 	        		fos.write((byte) params.getCryptParams().getBlocksize());
 	        		fos.write((byte) params.getCryptParams().getKeysize());
@@ -200,6 +231,8 @@ public class FileEncryptor {
 	        		fos.write(macSalt);
 	        		fos.write(IV);
 	        		fos.write(computedMAC);
+	        		
+	        		//For all data in the file to encrypt, encrypt and then write to the output file
 		        	try(CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
 		                final byte[] buffer = new byte[1024];
 		                for(int length = fis.read(buffer); length != -1; length = fis.read(buffer)){
@@ -260,6 +293,11 @@ public class FileEncryptor {
 				System.out.println("Not a valid encrypted file");
 				System.exit(0);
 			}
+			
+			//Read the metadata 
+			
+			//Cipher information
+			
 			int blocksize = fis.read();
 			int keysize = fis.read();
 			
@@ -279,6 +317,8 @@ public class FileEncryptor {
 			}
 			String ciphername = new String(bytes);
 			
+			//Salts, initialization vectors, and the MAC
+			
 			byte[] encSalt = new byte[16];
 			byte[] macSalt = new byte[16];
 			byte[] IV = new byte[blocksize];
@@ -288,6 +328,9 @@ public class FileEncryptor {
 			fis.read(macSalt);
 			fis.read(IV);
 			fis.read(givenMAC);
+			
+			//Generate the keys the same way we do with encryption
+			
 			byte[] key = CryptUtil.keyFromPassword(keysize, encSalt, params.getKey());
 			byte[] macKey = CryptUtil.keyFromPassword(32, macSalt, params.getKey());
 			
@@ -299,14 +342,18 @@ public class FileEncryptor {
 	        //Initialize the cipher
 	        cipher.init(Cipher.DECRYPT_MODE, keySpec, IVSpec);
 	        
+	        //Generate the specifications from the raw bytes
 	        SecretKeySpec macKeySpec = new SecretKeySpec(macKey, "HmacSHA256");
 	        Mac mac = Mac.getInstance("HmacSHA256");
 	        
+	        //Initialize the MAC
 	        mac.init(macKeySpec);
 	        
-	        //New File
+	        //If metadata reading was successful, overwrite the file and create a new zero-length one
 	        outFile.createNewFile();
 			
+	        //Initialize the cipher stream from the remaining file data
+	        //For every byte we read, write it to the target file, as well as feed it into the MAC
 	        try(CipherInputStream cis = new CipherInputStream(fis, cipher)) {
 	        	try(FileOutputStream fos = new FileOutputStream(outFile)) {
 	        		final byte[] buffer = new byte[1024];
@@ -317,8 +364,10 @@ public class FileEncryptor {
 	        	}
 	        }
 	        
+	        //Compute the MAC
 	        byte[] computedMAC = mac.doFinal();
 	        
+	        //If the MACs aren't equal, report decryption failure, delete the file, and exit
 	        if(!Arrays.equals(givenMAC, computedMAC)) {
 	        	System.out.println("Decrypted file didn't pass verification. Either your password was incorrect, or the file has been corrupted.");
 	        	outFile.delete();
@@ -538,6 +587,7 @@ public class FileEncryptor {
     	 * @return An array of chars, each representing one nibble/hexadecimal character. Hex
     	 * will be in upper case [0-9A-F]
     	 */
+    	@SuppressWarnings("unused")
     	public static final char[] toHex(byte[] bytes)
     	{
     		char[] chars = new char[bytes.length * 2];
@@ -624,6 +674,26 @@ public class FileEncryptor {
     		PBEKeySpec spec = new PBEKeySpec(password, combined, ITERATION_COUNT, keyBytes * 8);
     		SecretKey key = factory.generateSecret(spec);
     		return key.getEncoded();
+    	}
+    	
+    	/**
+    	 * Wipes a string in memory.
+    	 * From: https://konstantinpavlov.net/blog/2015/08/01/secure-java-coding-best-practices/
+    	 * @param toWipe
+    	 */
+    	public static void wipeString(String toWipe) {
+    	    try {
+    	        final Field stringValue = String.class.getDeclaredField("value");
+    	        stringValue.setAccessible(true);
+    	        final Object val = stringValue.get(toWipe);
+    	        if(val instanceof byte[]) {
+    	            Arrays.fill((byte[]) val, (byte)0); // in case of compact string in Java 9+
+    	        } else {
+    	            Arrays.fill((char[]) val, '\u0000');
+    	        }
+    	    } catch (NoSuchFieldException | IllegalAccessException e) {
+    	        throw new Error("Can't wipe string data");
+    	    }
     	}
     	
     }
