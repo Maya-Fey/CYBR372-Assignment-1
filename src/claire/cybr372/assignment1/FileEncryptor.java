@@ -31,8 +31,8 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public class FileEncryptor {
 	
-    private static final String ALGORITHM = "AES";
-    private static final String CIPHER = "AES/CBC/PKCS5PADDING";
+    private static final String DEFAULT_ALGORITHM = "AES";
+    private static final String DEFAULT_CIPHER = "AES/CBC/PKCS5PADDING";
 
     public static void main(String[] args) {
         //Convert the arguments to char arrays, wipe the originals, and then enter into a new function (hopefully the args[] will GC, giving just an extra layer of protection)
@@ -427,7 +427,7 @@ public class FileEncryptor {
     		return new InputParams(CommandType.INFO, new String(args[1]));
     	} else {
     		int start = 1;
-    		CryptParams params = new CryptParams(ALGORITHM, CIPHER, 16, 16);
+    		CryptParams params = new CryptParams(DEFAULT_ALGORITHM, DEFAULT_CIPHER, 16, 16);
     		if(type == CommandType.ENC && args.length == 5) {
     			start = 2;
     		}
