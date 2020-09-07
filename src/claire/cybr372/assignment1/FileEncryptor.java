@@ -134,19 +134,19 @@ public class FileEncryptor {
     		
     		//For IV generation
         	SecureRandom rand = new SecureRandom();
-        	byte[] IV = new byte[params.getBlocksize()];
+        	byte[] IV = new byte[params.getCryptParams().getBlocksize()];
         	byte[] salt = new byte[8];
         	byte[] key;
         	
         	//Generate IV, pepper, and the key from password
         	rand.nextBytes(IV);
         	rand.nextBytes(salt);
-			key = CryptUtil.keyFromPassword(params.getKeysize(), salt, params.getKey());
+			key = CryptUtil.keyFromPassword(params.getCryptParams().getKeysize(), salt, params.getKey());
 			
 			//Generate the specifications from the raw bytes
 			IvParameterSpec IVSpec = new IvParameterSpec(IV);
-	        SecretKeySpec keySpec = new SecretKeySpec(key, params.getAlgorithm());
-	        Cipher cipher = Cipher.getInstance(params.getCipher());
+	        SecretKeySpec keySpec = new SecretKeySpec(key, params.getCryptParams().getAlgorithm());
+	        Cipher cipher = Cipher.getInstance(params.getCryptParams().getCipher());
 	        
 	        //Initialize the cipher
 	        cipher.init(Cipher.ENCRYPT_MODE, keySpec, IVSpec);
@@ -163,12 +163,12 @@ public class FileEncryptor {
 	        		 * IV
 	        		 */
 	        		fos.write(0x09);
-	        		fos.write((byte) params.blocksize);
-	        		fos.write((byte) params.keysize);
-	        		fos.write((byte) params.algorithm.length());
-	        		fos.write(params.algorithm.getBytes());
-	        		fos.write((byte) params.cipher.length());
-	        		fos.write(params.cipher.getBytes());
+	        		fos.write((byte) params.getCryptParams().getBlocksize());
+	        		fos.write((byte) params.getCryptParams().getKeysize());
+	        		fos.write((byte) params.getCryptParams().getAlgorithm().length());
+	        		fos.write(params.getCryptParams().getAlgorithm().getBytes());
+	        		fos.write((byte) params.getCryptParams().getCipher().length());
+	        		fos.write(params.getCryptParams().getCipher().getBytes());
 	        		fos.write(salt);
 	        		fos.write(IV);
 		        	try(CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
@@ -182,7 +182,7 @@ public class FileEncryptor {
 	        
 	        System.out.println("File successfully encrypted.");
     	} catch (NoSuchAlgorithmException e) {
-    		System.out.println("The selected cipher (" + params.getAlgorithm() + "/" + params.getCipher() + ") is not available on this system. Consider upgrading your JRE.");
+    		System.out.println("The selected cipher (" + params.getCryptParams().getAlgorithm() + "/" + params.getCryptParams().getCipher() + ") is not available on this system. Consider upgrading your JRE.");
 			System.exit(0);
 		} catch (InvalidKeySpecException e) {
 			System.out.println("Internal error in the application. Likely a programming bug.");
@@ -284,7 +284,7 @@ public class FileEncryptor {
 			System.out.println("Error: " + e.getMessage());
 			System.exit(0);
 		} catch (NoSuchAlgorithmException e) {
-			System.out.println("The selected cipher (" + params.getAlgorithm() + "/" + params.getCipher() + ") is not available on this system. Consider upgrading your JRE.");
+			System.out.println("The cipher to decrypt the file is not available on this system. Consider upgrading your JRE.");
 			System.exit(0);
 		} catch (NoSuchPaddingException e) {
 			System.out.println("Internal error in the application. Likely a programming bug.");
@@ -325,15 +325,14 @@ public class FileEncryptor {
     		return new InputParams(CommandType.INFO, new String(args[1]));
     	} else {
     		int start = 1;
-    		String algo = ALGORITHM;
-    		String cipher = CIPHER;
+    		CryptParams params = new CryptParams(ALGORITHM, CIPHER, 16, 16);
     		if(type == CommandType.ENC && args.length == 5) {
     			start = 2;
     		}
     		char[] pass = args[start];
     		String inFile = new String(args[start + 1]);
     		String outFile = new String(args[start + 2]);
-    		return new InputParams(type, algo, cipher, 16, 16, pass, inFile, outFile);
+    		return new InputParams(type, params, pass, inFile, outFile);
     	}
     }
     
@@ -350,21 +349,16 @@ public class FileEncryptor {
     	
     	private final CommandType type;
     	
-    	private final String algorithm, cipher;
-    	
-    	private final int blocksize, keysize;
+    	private final CryptParams params;
     	
     	private final char[] key;
     	
     	private final String inputFile, outputFile;
     	
-    	public InputParams(CommandType encDec, String algorithm, String cipher, int blocksize, int keysize, char[] key, String inputFile, String outputFile)
+    	public InputParams(CommandType encDec, CryptParams params, char[] key, String inputFile, String outputFile)
     	{
     		this.type = encDec;
-    		this.algorithm = algorithm;
-    		this.cipher = cipher;
-    		this.blocksize = blocksize;
-    		this.keysize = keysize;
+    		this.params = params;
     		this.key = key;
     		this.inputFile = inputFile;
     		this.outputFile = outputFile;
@@ -374,8 +368,8 @@ public class FileEncryptor {
     	{
     		this.type = info;
     		this.inputFile = inputFile;
-    		this.cipher = this.outputFile = this.algorithm = null;
-    		this.blocksize = this.keysize = -1;
+    		this.outputFile = null;
+    		this.params = null;
     		this.key = null;
     	}
 
@@ -387,47 +381,14 @@ public class FileEncryptor {
 		}
 
 		/**
-		 * @return the algorithm
+		 * @return the algorithm parameters
 		 */
-		public String getAlgorithm() {
+		public CryptParams getCryptParams() {
 			if(type == CommandType.INFO)
-				throw new IllegalStateException("Attempted to call getAlgorithm on an INFO command");
+				throw new IllegalStateException("Attempted to call getCryptParams on an INFO command");
 			if(type == CommandType.DEC)
-				throw new IllegalStateException("Attempted to call getAlgorithm on an DEC command");
-			return algorithm;
-		}
-
-		/**
-		 * @return the cipher
-		 */
-		public String getCipher() {
-			if(type == CommandType.INFO)
-				throw new IllegalStateException("Attempted to call getCipher on an INFO command");
-			if(type == CommandType.DEC)
-				throw new IllegalStateException("Attempted to call getCipher on an DEC command");
-			return cipher;
-		}
-
-		/**
-		 * @return the blocksize
-		 */
-		public int getBlocksize() {
-			if(type == CommandType.INFO)
-				throw new IllegalStateException("Attempted to call getBlocksize on an INFO command");
-			if(type == CommandType.DEC)
-				throw new IllegalStateException("Attempted to call getBlocksize on an DEC command");
-			return blocksize;
-		}
-
-		/**
-		 * @return the keysize
-		 */
-		public int getKeysize() {
-			if(type == CommandType.INFO)
-				throw new IllegalStateException("Attempted to call getKeysize on an INFO command");
-			if(type == CommandType.DEC)
-				throw new IllegalStateException("Attempted to call getKeysize on an DEC command");
-			return keysize;
+				throw new IllegalStateException("Attempted to call getCryptParams on an DEC command");
+			return this.params;
 		}
 
 		/**
@@ -453,6 +414,55 @@ public class FileEncryptor {
 			if(type == CommandType.INFO)
 				throw new IllegalStateException("Attempted to call getOutputFile on an INFO command");
 			return outputFile;
+		}
+    	
+    }
+    
+    public static final class CryptParams
+    {
+    	private final String algorithm, cipher;
+    	
+    	private final int blocksize, keysize;
+
+		/**
+		 * @param algorithm
+		 * @param cipher
+		 * @param blocksize
+		 * @param keysize
+		 */
+		public CryptParams(String algorithm, String cipher, int blocksize, int keysize) {
+			this.algorithm = algorithm;
+			this.cipher = cipher;
+			this.blocksize = blocksize;
+			this.keysize = keysize;
+		}
+
+		/**
+		 * @return the algorithm
+		 */
+		public String getAlgorithm() {
+			return algorithm;
+		}
+
+		/**
+		 * @return the cipher
+		 */
+		public String getCipher() {
+			return cipher;
+		}
+
+		/**
+		 * @return the blocksize
+		 */
+		public int getBlocksize() {
+			return blocksize;
+		}
+
+		/**
+		 * @return the keysize
+		 */
+		public int getKeysize() {
+			return keysize;
 		}
     	
     }
