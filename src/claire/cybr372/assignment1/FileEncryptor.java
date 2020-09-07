@@ -34,7 +34,7 @@ public class FileEncryptor {
     private static final String ALGORITHM = "AES";
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
 
-    public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException {
+    public static void main(String[] args) {
         //Convert the arguments to char arrays, wipe the originals, and then enter into a new function (hopefully the args[] will GC, giving just an extra layer of protection)
     	char[][] charargs = Util.toCharArrayArray(args);
     	for(String s : args)
